@@ -1,0 +1,110 @@
+***CGAP_Endline Cleaning
+****RA: Shubhranka
+****Last Date for data update :21/2/2018
+****(One entry has no 'state' entry, so value not included in summary stats)
+clear all
+set more off
+**Global for the dropbox
+global drop "C:\Users\Shubhrank_Mondal\Dropbox\CGAP_Endline"
+
+***Global for the Raw data for all the files in 4 languages.
+global raw "$drop\Raw"
+
+***Converting all the 4 csv files into dta format. All the labels have been  removed from these files.
+cd "C:\Users\Shubhrank_Mondal\Dropbox\CGAP_Endline\Raw"
+do import_CGAP_Endline_Garo.do
+do import_CGAP_Endline_Hindi.do
+do import_CGAP_Endline_Marathi.do
+do import_CGAP_Endline_Tamil.do
+
+****Appending all the 4 dta files together, the labels have been dropped here.
+cd "C:\Users\Shubhrank_Mondal\Dropbox\CGAP_Endline\Raw"
+use "CGAP_Endline_Garo.dta"
+drop simid
+append using  "CGAP_Endline_Hindi.dta"
+drop simid
+append using "CGAP_Endline_Marathi.dta"
+drop simid 
+append using "CGAP_Endline_Tamil.dta"
+
+******Labelling the combined dataset in English.
+do Labels.do
+
+****Renaming the values of the state for shorter entry in the summary tables
+replace state="MH" if state=="Maharashtra"
+replace state="UP" if state=="Uttar Pradesh"
+replace state="TM" if state=="Tamil Nadu"
+replace state="ML" if state=="Meghalaya"
+
+*****Checking for no consent entries in the dataset. After taking the respondent name, there has been no entry. Removing such cases.
+tab consent, nolab
+drop if consent== 2
+
+****Duplicate Unieids, list the set of new duplicates each time, generating a duplicate ID to browse through each variable of the duplicate
+duplicates report uniqueid
+duplicates list uniqueid
+duplicates tag uniqueid, gen(duplicates)
+br if duplicate==1
+
+*****Removing the duplicates. There are 10 such cases. All the surveys are complete with slight variation, we are dropping the earlier survey and keeping the latest survey by date.
+drop if uniqueid=="3_34_009" & duration=="402"
+drop if uniqueid=="3_32_017" & duration=="1195"
+drop if uniqueid=="3_34_013" & duration=="1827"
+drop if uniqueid=="3_34_012" & duration=="406"
+drop if uniqueid=="3_34_014" & duration=="4485"
+drop if uniqueid=="3_34_011" & duration=="788"
+drop if uniqueid=="3_34_015" & duration=="692"
+drop if uniqueid=="3_31_050" & duration=="781"
+drop if uniqueid=="4_42_024" & duration=="439"
+drop if uniqueid=="3_34_010" & duration=="314"
+drop if uniqueid=="1_13_064" & duration=="1430"
+drop if uniqueid=="4_42_047" & duration=="335"
+drop if uniqueid=="3_34_010" & duration=="2888"
+drop if uniqueid=="3_34_036" & duration=="325"
+drop if uniqueid=="4_43_063" & duration=="373"
+drop if uniqueid=="1_12_038" & duration=="957"
+drop if uniqueid=="3_34_037" & duration=="264"
+drop if uniqueid=="4_41_007" & duration=="631"
+
+*****Checking uids that do not fit into the given format. 
+****For these two uids, the start date is not very different from the enddate but there is no respondent name. So most likely the surveyors were checking their doubts, and not conducting real surveys. So these can be removed.
+drop if inlist(uniqueid,"22222222","55555555")
+
+****Drop PII iformation which is respondent name in this case
+drop res_name
+
+****Recoding -999 or dont know, -888 as others, -777 refuse to answer (as .d, .o and .r respectively)
+foreach x in a1 a4a a4b a4c a5a a5c a6a a6c a12 a18 b1a b1b b3 b3a b3b b4a b4b b4c b4d b4e b4f c6 d1 d1 d2 d3a d3b d3c d3d d3e d3f d4 c1 c2 c4  c6 c7 c9 c10 c11 b1a b1b b1c b1d b1e b3a b3b b4a b4b b4c b4d b4e b4f b4g b4h b8 b9 b11 b12 b13 b14 b16 b17 b18 b19 b20a b20b b20c b20d b20e {
+recode `x'(-999 =.d)(-888 =.o)(-777=.r)
+}  
+*** Recoding Yes/No questions into dummies of 1 & 0 instead of 1 & 2
+foreach y in a8 a13 a14 a15 a18 a21 a23 a24 b2 b6a b6b b6c b6d b6e b8 b9 b14 b16 b17 b18 b19 b20a b20b b20c b20d b20e c1 c2 c4 c7 c8 c9 d4 {
+recode `y'(2=0)
+} 
+****Recoding and relabelling the categorical variables
+do CategoricalVariables.do
+
+*****Table/ Summary statistics on Opinion on Policy - Delegalization Perceptions
+eststo clear
+sort state
+by state: eststo: quietly estpost summarize d1 d2 d3a d3b d3c d3f d4
+esttab using policyview.csv, cells(mean (fmt(2))) label nodepvar nonum title("Table 3: Opinon on Policy") collabels(none)gap refcat(d1 "Trust in cash (1-5 highest)" d3a "Agreement to statement (1-5 highest)", nolabel) replace
+
+****Table/ Summary statistics on Savings
+eststo clear
+sort state
+by state: eststo: quietly estpost summarize c1 c2 c6 c4 c7 c8 c9 c10_in c10_ss c10_ds c10_dt c11_in c11_ss c11_ds c11_dt
+esttab using savings.csv, cells(mean (fmt(2))) label nodepvar nonum title(" Table 2: Saving Behaviour") collabels(none) gap refcat(c4 " Post-delegalisation (Yes=1)" c10_in "Last 2 months change in formal savings (Yes=1)" c11_in "Last 2 months change in informal savings (Yes=1)", nolabel) noobs
+
+***Table/ Summary statistics on Digital Payment
+eststo clear
+sort state
+by state: eststo: quietly estpost summarize b1a b1b b1c b1_1a_bank b1_1a_atm b1_1a_bc b1_1a_dob b1_1a_pb b1_1a_mw b1_1b_bank b1_1b_atm b1_1b_bc b1_1b_ob b1_1b_pb b1_1b_mw b1_2b_nh b1_2b_bc b1_2b_sh b1_2b_fa b1_2b_ne b1_2b_fr b2 b2a_n_1 b2a_n_2 b2a_n_3 b2a_n_4 b2a_n_5 b2a_n_6 b2a_n_7 b2a_n_8 b2a_n_9 b2a_n_10 b2a_n_11 b2a_n_12 b2a_n_13 b2a_n_14 b2a_n_15 b2b b4a b4b b4c b4d b4e b4f b4g b6a b6b b6c b6d b6e b8 b9 b12 b13 b17 b18 b19 b20a b20b b20c b20d
+esttab using digitalpayment.csv, cells (mean (fmt(2))) label nodepvar nonum title ("Digital Payment")collabels(none) gap  refcat (b1a "In last 2 months average amount transacted (in Rs.)" b1_1a_bank "Means:" b1_2b_nh " Transaction Assistance(Yes=1)" b4a "Digital Paymnet Montly Use (Frequency)" b2a_n_1 "Under which programs (Yes=1)" b6a "Financial Awareness (Yes=1)" b20a "Limitations to using digital payment methods (Yes=1)", nolabel) noobs
+
+*****Table/Summary stats on Population characteristics
+eststo clear
+sort state
+by state: eststo: quietly estpost summarize a1 a4 a4a a4b_f a4b_b a4b_prm a4b_pvm a4c a6 a6a a6c a6d a8 a9_ml a9_sf a9_jt a9_mi a9_fb a9_cf a9_pb a9_e a9_ff a9_ot a10 a11 a13 a14 a15 a18 a21
+esttab using populationstats1.csv, cells(mean (fmt(2))) label nodepvar nonum title(" Table 1: Population Characteristic")collabels(none) gap refcat (a4b_f "Mode of trasport" a9_ml "Sources of loans", nolabel) noobs
+
